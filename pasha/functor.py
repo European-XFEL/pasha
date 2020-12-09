@@ -12,6 +12,32 @@ from collections.abc import Sequence
 import numpy as np
 
 
+def gen_split_slices(total_len, part_len=None, n_parts=None):
+    """Generate slices to split a sequence.
+
+    Returns a list of slices to split a sequence into smaller pieces.
+
+    Args:
+        total_len (int): Length of the full sequence.
+        part_len (int, optional): Length of each piece, may be None if
+            n_parts is specified.
+        n_parts (int, optional): Number of pieces, ignored if part_len
+            is specified.
+
+    Returns:
+        (list of slice) Slices to split the sequence.
+    """
+
+    if part_len is None:
+        if n_parts is None:
+            raise ValueError('must specify either part_len or n_parts')
+
+        part_len = total_len // n_parts
+
+    return [slice(start, min(total_len, start + part_len), 1)
+            for start in range(0, total_len, part_len)]
+
+
 class Functor:
     """Mappable object.
 
@@ -109,8 +135,9 @@ class Functor:
         """Iterate over a share of this functor.
 
         Args:
-            share (Any): Element of the Iterable returned by to iterate
-                over.
+            share (Any): Element of the Iterable returned by split() to
+                iterate over. The exact type of specification is up to
+                the `Functor` implementation.
 
         Returns:
             None
@@ -120,19 +147,21 @@ class Functor:
 
 
 class SequenceFunctor(Functor):
-    """Functor wrapping a sequence.
+    """Functor wrapping a generic sequence.
 
-    This functor can wrap any indexable collection, e.g. list, tuples,
-    or any other type implementing __getitem__. It automatically wraps
-    any value implementing the collections.abc.Sequence type. The kernel
-    is passed the current index and sequence value at that index.
+    This functor can wrap any type implementing the
+    collections.abc.Sequence type, i.e. is indexable by integers and
+    slices and has a length. Instances of this abstract type are
+    automatically wrapped, but the functor should work with any
+    ArrayLike object. The kernel is passed the current index and
+    sequence value at that index.
     """
 
     def __init__(self, sequence):
         """Initialize a sequence functor.
 
         Args:
-            sequence (Sequence): Sequence to process.
+            sequence (Sequence, ArrayLike): Sequence to process.
         """
 
         self.sequence = sequence
@@ -143,21 +172,19 @@ class SequenceFunctor(Functor):
             return cls(value)
 
     def split(self, num_workers):
-        return np.array_split(np.arange(len(self.sequence)), num_workers)
+        return gen_split_slices(len(self.sequence), n_parts=num_workers)
 
-    def iterate(self, indices):
-        for index in indices:
-            yield index, self.sequence[index]
+    def iterate(self, share):
+        yield from zip(range(*share.indices(len(self.sequence))),
+                       self.sequence[share])
 
 
 class NdarrayFunctor(SequenceFunctor):
-    """Functor wrapping an numpy.ndarray.
+    """Functor wrapping a numpy.ndarray.
 
-    This functor extends SequenceFunctor to use additional functionality
-    provided by numpy ndarrays, e.g. iterating over specific axes and
-    more efficient indexing and should works for any array_like object
-    that supports numpy-style slicing. However, specifying an explicit
-    axis may cause conversion to an ndarray or break unexpectedly.
+    This functor extends SequenceFunctor to allow iterating over
+    specific axes. While it should work for any ArrayLike object,
+    specifying an explicit axis may cause conversion to an ndarray.
     """
 
     def __init__(self, array, axis=None):
@@ -176,9 +203,6 @@ class NdarrayFunctor(SequenceFunctor):
     def wrap(cls, value):
         if isinstance(value, np.ndarray):
             return cls(value)
-
-    def iterate(self, indices):
-        yield from zip(indices, self.sequence[indices])
 
 
 class DataArrayFunctor(NdarrayFunctor):
@@ -227,6 +251,7 @@ class ExtraDataFunctor(Functor):
 
     def __init__(self, obj):
         self.obj = obj
+        self.n_trains = len(self.obj.train_ids)
 
     @classmethod
     def wrap(cls, value):
@@ -240,15 +265,17 @@ class ExtraDataFunctor(Functor):
             return cls(value)
 
     def split(self, num_workers):
-        return np.array_split(np.arange(len(self.obj.train_ids)), num_workers)
+        return gen_split_slices(self.n_trains, n_parts=num_workers)
 
-    def iterate(self, indices):
-        subobj = self.obj.select_trains(np.s_[indices])
+    def iterate(self, share):
+        subobj = self.obj.select_trains(np.s_[share])
 
         # Close all file handles inherited from the parent collection
         # to force re-opening them in each worker process.
         for f in subobj.files:
             f.close()
 
-        for index, (train_id, data) in zip(indices, subobj.trains()):
+        it = zip(range(*share.indices(self.n_trains)), subobj.trains())
+
+        for index, (train_id, data) in it:
             yield index, train_id, data

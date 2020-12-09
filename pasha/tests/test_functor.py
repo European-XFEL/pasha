@@ -72,8 +72,9 @@ def test_sequence_like_functor(value, expected_type):
     functor = Functor.try_wrap(value)
 
     assert isinstance(functor, expected_type)
-    np.testing.assert_allclose(functor.split(2), [[0, 1], [2, 3]])
-    np.testing.assert_allclose(list(functor.iterate([1, 2])), [[1, 2], [2, 3]])
+    assert functor.split(2) == [np.s_[0:2:1], np.s_[2:4:1]]
+    np.testing.assert_allclose(list(functor.iterate(np.s_[1:3:1])),
+                               [[1, 2], [2, 3]])
 
 
 @pytest.mark.parametrize(
@@ -85,9 +86,9 @@ def test_NdarrayFunctor_axis(axis, expected_value):
     inp = np.arange(9).reshape(3, 3)
 
     functor = psh.NdarrayFunctor(inp, axis=axis)
-    np.testing.assert_allclose(functor.split(3), [[0], [1], [2]])
+    assert functor.split(3) == [np.s_[0:1:1], np.s_[1:2:1], np.s_[2:3:1]]
 
-    _, value = next(iter(functor.iterate([0])))
+    _, value = next(iter(functor.iterate(np.s_[0:1:1])))
     assert isinstance(value, np.ndarray)
     np.testing.assert_allclose(value, expected_value)
 
@@ -101,9 +102,9 @@ def test_DataArrayFunctor_dim(dim, expected_value):
     inp = xr.DataArray(np.arange(9).reshape(3, 3), dims=['a', 'b'])
 
     functor = psh.DataArrayFunctor(inp, dim=dim)
-    np.testing.assert_allclose(functor.split(3), [[0], [1], [2]])
+    assert functor.split(3) == [np.s_[0:1:1], np.s_[1:2:1], np.s_[2:3:1]]
 
-    _, value = next(iter(functor.iterate([0])))
+    _, value = next(iter(functor.iterate(np.s_[0:1:1])))
     assert isinstance(value, xr.DataArray)
     assert value.dims == tuple(set(inp.dims) - {dim})
     np.testing.assert_allclose(value, expected_value)
