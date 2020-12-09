@@ -16,13 +16,13 @@ from .functor import (  # noqa
     SequenceFunctor, NdarrayFunctor, DataArrayFunctor, ExtraDataFunctor)
 
 
-_default_context = ProcessContext()
+_default_context = None
 
 
 def get_default_context():
     """Get default map context.
 
-    On startup, a LocalContext is used as the default context.
+    By default, this returns a ProcessContext.
 
     Args:
         None
@@ -30,6 +30,11 @@ def get_default_context():
     Returns:
         (MapContext) Default map context.
     """
+
+    global _default_context
+
+    if _default_context is None:
+        _default_context = ProcessContext()
 
     return _default_context
 
