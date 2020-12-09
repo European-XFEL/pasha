@@ -11,22 +11,7 @@ import pytest
 import numpy as np
 import xarray as xr
 import pasha as psh
-from pasha.functor import import_if_type_likely, Functor
-
-
-def test_import_if_type_likely():
-    """Test import_if_type_likely helper function."""
-
-    array = np.random.rand(5)
-
-    assert import_if_type_likely('numpy', array) is np
-    assert import_if_type_likely('numpy', array, ['numpy.ndarray']) is np
-    assert import_if_type_likely(
-        'numpy', array, ['list', 'numpy.ndarray']) is np
-    assert import_if_type_likely('numpy', array, 'numpy.ndarray') is np
-    assert import_if_type_likely('numpy', array, ['foo', 'bar']) is None
-    assert import_if_type_likely('numpy', array, 'foo') is None
-    assert import_if_type_likely('UnlikelyPackageName', array) is None
+from pasha.functor import Functor
 
 
 _supported_try_wrap = [

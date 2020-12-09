@@ -6,44 +6,10 @@
 # Copyright (c) 2020, European X-Ray Free-Electron Laser Facility GmbH.
 # All rights reserved.
 
+import sys
 from collections.abc import Sequence
-from importlib import import_module
 
 import numpy as np
-
-
-def import_if_type_likely(module_name, obj, type_names=None):
-    """Import a module if an object's type matches by name.
-
-    Args:
-        module_name (str): Module to import.
-        obj (Any): Object to check type of.
-        type_names (str or Collection of str, optional): Full qualified
-            type name(s) to check against, only module_name is tested
-            by default.
-
-    Returns:
-        (module or None) Imported module object or None if type does not
-            seem to match or an ImportError occured.
-    """
-
-    if type_names is not None:
-        full_name = f'{type(obj).__module__}.{type(obj).__qualname__}'
-
-        if isinstance(type_names, str):
-            type_names = [type_names]
-
-        if full_name not in type_names:
-            return
-    elif not type(obj).__module__.startswith(module_name):
-        return
-
-    try:
-        module_obj = import_module(module_name)
-    except ImportError:
-        return
-
-    return module_obj
 
 
 class Functor:
@@ -236,10 +202,14 @@ class DataArrayFunctor(NdarrayFunctor):
 
     @classmethod
     def wrap(cls, value):
-        xr = import_if_type_likely('xarray', value,
-                                   'xarray.core.dataarray.DataArray')
+        if 'xarray' not in sys.modules:
+            # If xarray has not been loaded yet, we can safely assume
+            # this to not be a DataArray.
+            return
 
-        if xr is not None and isinstance(value, xr.DataArray):
+        import xarray as xr
+
+        if isinstance(value, xr.DataArray):
             return cls(value)
 
 
@@ -258,24 +228,22 @@ class ExtraDataFunctor(Functor):
     def __init__(self, obj):
         self.obj = obj
 
-        import extra_data as xd
-        ExtraDataFunctor.xd = xd
-
     @classmethod
     def wrap(cls, value):
-        xd = import_if_type_likely(
-            'extra_data', value,
-            ['extra_data.reader.DataCollection', 'extra_data.keydata.KeyData'])
+        if 'extra_data' not in sys.modules:
+            # Same assumption as in DataArrayFunctor.
+            return
 
-        if xd is not None and \
-                isinstance(value, (xd.DataCollection, xd.keydata.KeyData)):
+        import extra_data as xd
+
+        if isinstance(value, (xd.DataCollection, xd.keydata.KeyData)):
             return cls(value)
 
     def split(self, num_workers):
         return np.array_split(np.arange(len(self.obj.train_ids)), num_workers)
 
     def iterate(self, indices):
-        subobj = self.obj.select_trains(ExtraDataFunctor.xd.by_index[indices])
+        subobj = self.obj.select_trains(np.s_[indices])
 
         # Close all file handles inherited from the parent collection
         # to force re-opening them in each worker process.
