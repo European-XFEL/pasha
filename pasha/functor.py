@@ -6,6 +6,7 @@
 # Copyright (c) 2020, European X-Ray Free-Electron Laser Facility GmbH.
 # All rights reserved.
 
+import math
 import sys
 from collections.abc import Sequence
 
@@ -32,10 +33,11 @@ def gen_split_slices(total_len, part_len=None, n_parts=None):
         if n_parts is None:
             raise ValueError('must specify either part_len or n_parts')
 
-        part_len = total_len // n_parts
+    else:
+        n_parts = math.ceil(total_len / part_len)
 
-    return [slice(start, min(total_len, start + part_len), 1)
-            for start in range(0, total_len, part_len)]
+    return [slice(i * total_len // n_parts, (i+1) * total_len // n_parts)
+            for i in range(n_parts)]
 
 
 class Functor:
