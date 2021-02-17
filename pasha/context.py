@@ -6,13 +6,6 @@
 # Copyright (c) 2020, European X-Ray Free-Electron Laser Facility GmbH.
 # All rights reserved.
 
-import mmap
-from multiprocessing import get_context
-from multiprocessing.pool import ThreadPool
-from os import cpu_count
-from queue import Queue
-from threading import local
-
 import numpy as np
 
 from .functor import Functor
@@ -166,6 +159,8 @@ class PoolContext(MapContext):
     """
 
     def __init__(self, num_workers=None):
+        from os import cpu_count
+
         if num_workers is None:
             num_workers = min(cpu_count() // 2, 10)
 
@@ -203,10 +198,14 @@ class ThreadContext(PoolContext):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.worker_storage = local()
+        from queue import Queue
+        from threading import local
+
         self.id_queue = Queue()
+        self.worker_storage = local()
 
     def map(self, function, functor):
+        from multiprocessing.pool import ThreadPool
         super().map(function, functor, ThreadPool)
 
     def init_worker(self, functor):
@@ -232,6 +231,8 @@ class ProcessContext(PoolContext):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        from multiprocessing import get_context
+
         try:
             self.mp_ctx = get_context('fork')
         except ValueError:
@@ -247,6 +248,7 @@ class ProcessContext(PoolContext):
             for _s in shape:
                 n_elements *= _s
 
+        import mmap
         n_bytes = n_elements * np.dtype(dtype).itemsize
         n_pages = n_bytes // mmap.PAGESIZE + 1
 
