@@ -39,26 +39,34 @@ class MapContext:
 
         self.num_workers = num_workers
 
-    def array(self, shape, dtype=np.float64):
+    def _per_worker_shape(self, extra_shape):
+        """Preprend worker axis to an array shape."""
+
+        if isinstance(extra_shape, int):
+            return (self.num_workers, extra_shape)
+        else:
+            return (self.num_workers,) + tuple(extra_shape)
+
+    def empty(self, shape, dtype=np.float64):
         """Allocate an array shared with all workers.
 
         The implementation may decide how to back this memory, but it
         is required that all workers of this context may read AND write
-        to this memory. The base implementation allocates directly
-        on the heap.
+        to this memory. The array values are not guaranteed to be
+        initialized to any particular value.
 
         Args:
             shape (int or tuple of ints): Shape of the array.
-            dtype (data-type): Desired data-type for the array.
+            dtype (DTypeLike, optional): Data type of the array.
 
         Returns:
             (numpy.ndarray) Created array object.
         """
 
-        return np.zeros(shape, dtype=dtype)
+        raise NotImplementedError('Context.empty')
 
-    def array_like(self, other):
-        """Allocate an array with the same shape and dtype as another.
+    def empty_like(self, other):
+        """Allocate a shared array with the same shape/dtype as another.
 
         Args:
             other (ArrayLike): Other array.
@@ -67,9 +75,9 @@ class MapContext:
             (numpy.ndarray) Created array object.
         """
 
-        return self.array(other.shape, other.dtype)
+        return self.empty(other.shape, dtype=other.dtype)
 
-    def array_per_worker(self, shape, dtype=np.float64):
+    def empty_per_worker(self, shape, dtype=np.float64):
         """Allocate a shared array for each worker.
 
         The returned array will contain an additional prepended axis
@@ -79,16 +87,120 @@ class MapContext:
         operations, where each worker may work with its own accumulator.
 
         Args:
-            Same as array()
+            shape (int or tuple of ints): Shape of the array.
+            dtype (DTypeLike, optional): Data type of the array.
 
         Returns:
             (numpy.ndarray) Created array object.
         """
 
-        if isinstance(shape, int):
-            return self.array((self.num_workers, shape), dtype)
-        else:
-            return self.array((self.num_workers,) + tuple(shape), dtype)
+        return self.empty(self._per_worker_shape(shape), dtype=dtype)
+
+    def zeros(self, shape, dtype=np.float64):
+        """Allocate an initialized array.
+
+        Equivalent to :meth:`Context.empty`, but all elements are
+        initialized to zero.
+        """
+
+        array = self.empty(shape, dtype=dtype)
+        array[:] = 0
+
+        return array
+
+    def zeros_like(self, other):
+        """Allocate an initialized array with the same shape/dtype.
+
+        Equivalent to :meth:`Context.empty_like`, but all elements are
+        initialized to zero.
+        """
+
+        return self.zeros(other.shape, dtype=other.dtype)
+
+    def zeros_per_worker(self, shape, dtype=np.float64):
+        """Allocate an initialized array for each worker.
+
+        Equivalent to :meth:`Context.empty_per_worker`, but all elements
+        are initialized to zero.
+        """
+
+        return self.zeros(self._per_worker_shape(shape), dtype=dtype)
+
+    def ones(self, shape, dtype=np.float64):
+        """Allocate an initialized array shared with all workers.
+
+        Equivalent to :meth:`Context.empty`, but all elements are
+        initialized to one.
+        """
+
+        array = self.empty(shape, dtype=dtype)
+        array[:] = 1
+
+        return array
+
+    def ones_like(self, other):
+        """Allocate an initialized array with the same shape/dtype.
+
+        Equivalent to :meth:`Context.empty_like`, but all elements are
+        initialized to one.
+        """
+
+        return self.ones(other.shape, dtype=other.dtype)
+
+    def ones_per_worker(self, shape, dtype=np.float64):
+        """Allocate an initialized array for each worker.
+
+        Equivalent to :meth:`Context.empty_per_worker`, but all elements
+        are initialized to one.
+        """
+
+        return self.ones(self._per_worker_shape(shape), dtype=dtype)
+
+    def full(self, shape, fill_value, dtype=np.float64):
+        """Allocate an initialized array shared with all workers.
+
+        Equivalent to :meth:`Context.empty`, but all elements are
+        initialized to the specified fill value.
+
+        Args:
+            shape (int or tuple of ints): Shape of the array.
+            fill_value (scalar or ArrayLike): Value to initialize to.
+            dtype (DTypeLike, optional): Data type of the array.
+
+        Returns:
+            (numpy.ndarray) Created array object.
+        """
+
+        array = self.empty(shape, dtype=dtype)
+        array[:] = fill_value
+
+        return array
+
+    def full_like(self, other, fill_value):
+        """Allocate an initialized array with the same shape/dtype.
+
+        Equivalent to :meth:`Context.empty_like`, but all elements are
+        initialized to the specified fill value.
+
+        Args:
+            other (ArrayLike): Other array.
+            fill_value (scalar or ArrayLike): Value to initialize to.
+
+        Returns:
+            (numpy.ndarray) Created array object.
+        """
+
+        return self.full(other.shape, fill_value, dtype=other.dtype)
+
+    def full_per_worker(self, shape, fill_value, dtype=np.float64):
+        """Allocate an initialized array for each worker.
+
+        Equivalent to :meth:`Context.empty_per_worker`, but all elements
+        are initialized to the specified fill value.
+        """
+
+        return self.full(self._per_worker_shape(shape), fill_value,
+                         dtype=dtype)
 
     def map(self, function, functor):
         """Apply a function to a functor.
@@ -134,7 +246,23 @@ class MapContext:
             function(worker_id, *entry)
 
 
-class SerialContext(MapContext):
+class HeapContext(MapContext):
+    """Abstract map context allocating arrays on the heap."""
+
+    def empty(self, shape, dtype=np.float64):
+        return np.empty(shape, dtype=dtype)
+
+    def zeros(self, shape, dtype=np.float64):
+        return np.zeros(shape, dtype=dtype)
+
+    def ones(self, shape, dtype=np.float64):
+        return np.ones(shape, dtype=dtype)
+
+    def full(self, shape, fill_value, dtype=np.float64):
+        return np.full(shape, fill_value, dtype=dtype)
+
+
+class SerialContext(HeapContext):
     """Serial map context.
 
     Runs the map operation directly in the same process and thread
@@ -191,7 +319,7 @@ class PoolContext(MapContext):
             p.map(self.run_worker, functor.split(self.num_workers))
 
 
-class ThreadContext(PoolContext):
+class ThreadContext(PoolContext, HeapContext):
     """Map context using a thread pool.
     """
 
@@ -240,7 +368,7 @@ class ProcessContext(PoolContext):
 
         self.id_queue = self.mp_ctx.Queue()
 
-    def array(self, shape, dtype=np.float64):
+    def empty(self, shape, dtype=np.float64):
         if isinstance(shape, int):
             n_elements = shape
         else:

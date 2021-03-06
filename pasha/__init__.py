@@ -72,19 +72,64 @@ def set_default_context(ctx_or_method, *args, **kwargs):
     _default_context = ctx
 
 
-@wraps(MapContext.array)
-def array(*args, **kwargs):
-    return get_default_context().array(*args, **kwargs)
+@wraps(MapContext.empty)
+def empty(*args, **kwargs):
+    return get_default_context().empty(*args, **kwargs)
 
 
-@wraps(MapContext.array_like)
-def array_like(*args, **kwargs):
-    return get_default_context().array_like(*args, **kwargs)
+@wraps(MapContext.empty_like)
+def empty_like(*args, **kwargs):
+    return get_default_context().empty_like(*args, **kwargs)
 
 
-@wraps(MapContext.array_per_worker)
-def array_per_worker(*args, **kwargs):
-    return get_default_context().array_per_worker(*args, **kwargs)
+@wraps(MapContext.empty_per_worker)
+def empty_per_worker(*args, **kwargs):
+    return get_default_context().empty_per_worker(*args, **kwargs)
+
+
+@wraps(MapContext.zeros)
+def zeros(*args, **kwargs):
+    return get_default_context().zeros(*args, **kwargs)
+
+
+@wraps(MapContext.zeros_like)
+def zeros_like(*args, **kwargs):
+    return get_default_context().zeros_like(*args, **kwargs)
+
+
+@wraps(MapContext.zeros_per_worker)
+def zeros_per_worker(*args, **kwargs):
+    return get_default_context().zeros_per_worker(*args, **kwargs)
+
+
+@wraps(MapContext.ones)
+def ones(*args, **kwargs):
+    return get_default_context().ones(*args, **kwargs)
+
+
+@wraps(MapContext.ones_like)
+def ones_like(*args, **kwargs):
+    return get_default_context().ones_like(*args, **kwargs)
+
+
+@wraps(MapContext.ones_per_worker)
+def ones_per_worker(*args, **kwargs):
+    return get_default_context().ones_per_worker(*args, **kwargs)
+
+
+@wraps(MapContext.full)
+def full(*args, **kwargs):
+    return get_default_context().full(*args, **kwargs)
+
+
+@wraps(MapContext.full_like)
+def full_like(*args, **kwargs):
+    return get_default_context().full_like(*args, **kwargs)
+
+
+@wraps(MapContext.full_per_worker)
+def full_per_worker(*args, **kwargs):
+    return get_default_context().full_per_worker(*args, **kwargs)
 
 
 @wraps(MapContext.map)

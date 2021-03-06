@@ -10,46 +10,80 @@ import pytest
 
 import numpy as np
 import pasha as psh
-from pasha.context import MapContext
+from pasha.context import MapContext, HeapContext
 from pasha.functor import Functor
 
 
+class _AllocTestContext(MapContext):
+    """Simple context implementing a minimal allocation machinery."""
+
+    def empty(self, shape, dtype=np.float64):
+        return np.empty(shape, dtype=dtype)
+
+
+@pytest.mark.parametrize(
+    'ctx_cls', [_AllocTestContext, HeapContext],
+    ids=['MapContext', 'HeapContext'])
+@pytest.mark.parametrize(
+    ['method', 'expected'], [('empty', None), ('zeros', 0.0), ('ones', 1.0)],
+    ids=['empty', 'zeros', 'ones'])
 @pytest.mark.parametrize(
     ['shape_in', 'shape_out'], [(3, (3,)), ((3, 2), (3, 2))],
     ids=['int', 'tuple'])
-def test_array(shape_in, shape_out):
-    """Test MapContext.array."""
+def test_array(ctx_cls, method, expected, shape_in, shape_out):
+    """Test direct allocation."""
 
-    ctx = MapContext(num_workers=1)
+    ctx = ctx_cls(num_workers=3)
 
-    array = ctx.array(shape_in, np.uint32)
+    array = getattr(ctx, method)(shape_in, np.uint32)
     assert array.shape == shape_out
     assert array.dtype == np.uint32
 
+    if expected is not None:
+        np.testing.assert_allclose(array, expected)
 
-def test_array_like():
-    """Test MapContext.array_like."""
 
-    ctx = MapContext(num_workers=1)
+@pytest.mark.parametrize(
+    'ctx_cls', [_AllocTestContext, HeapContext],
+    ids=['MapContext', 'HeapContext'])
+@pytest.mark.parametrize(
+    ['method', 'expected'], [('empty', None), ('zeros', 0.0), ('ones', 1.0)],
+    ids=['empty', 'zeros', 'ones'])
+def test_array_like(ctx_cls, method, expected):
+    """Test allocation based on existing array."""
+
+    ctx = ctx_cls(num_workers=3)
 
     array_in = np.random.rand(2, 3, 4).astype(np.float32)
-    array_out = ctx.array_like(array_in)
+    array_out = getattr(ctx, f'{method}_like')(array_in)
 
     assert array_in.shape == array_out.shape
     assert array_in.dtype == array_out.dtype
 
+    if expected is not None:
+        np.testing.assert_allclose(array_out, expected)
 
+
+@pytest.mark.parametrize(
+    'ctx_cls', [_AllocTestContext, HeapContext],
+    ids=['MapContext', 'HeapContext'])
+@pytest.mark.parametrize(
+    ['method', 'expected'], [('empty', None), ('zeros', 0.0), ('ones', 1.0)],
+    ids=['empty', 'zeros', 'ones'])
 @pytest.mark.parametrize(
     ['shape_in', 'shape_out'], [(3, (3,)), ((3, 2), (3, 2))],
     ids=['int', 'tuple'])
-def test_array_per_worker(shape_in, shape_out):
-    """Test MapContext.array_per_worker."""
+def test_array_per_worker(ctx_cls, method, expected, shape_in, shape_out):
+    """Test allocation per worker."""
 
-    ctx = MapContext(num_workers=4)
+    ctx = ctx_cls(num_workers=3)
 
-    array = ctx.array_per_worker(shape_in, np.uint32)
-    assert array.shape == (4,) + shape_out
+    array = getattr(ctx, f'{method}_per_worker')(shape_in, np.uint32)
+    assert array.shape == (ctx.num_workers,) + shape_out
     assert array.dtype == np.uint32
+
+    if expected is not None:
+        np.testing.assert_allclose(array, expected)
 
 
 def test_run_worker():
@@ -82,7 +116,7 @@ def test_map(ctx):
     """Test map operation for each context type."""
 
     inp = np.random.rand(100)
-    outp = ctx.array(inp.shape, inp.dtype)
+    outp = ctx.empty(inp.shape, inp.dtype)
 
     def multiply(worker_id, index, value):
         outp[index] = 3 * value
