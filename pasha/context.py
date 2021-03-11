@@ -39,6 +39,14 @@ class MapContext:
 
         self.num_workers = num_workers
 
+    @staticmethod
+    def _deprecated_array_function_warning():
+        from warnings import warn, filterwarnings
+        filterwarnings('always')
+        warn('The array[...]() family of functions has been replaced by '
+             'zeros[...]() and will be removed in a future version',
+             DeprecationWarning, stacklevel=3)
+
     def _per_worker_shape(self, extra_shape):
         """Preprend worker axis to an array shape."""
 
@@ -250,6 +258,18 @@ class MapContext:
 
         return self.full(self._per_worker_shape(shape), fill_value,
                          dtype=dtype, order=order)
+
+    def array(self, shape, dtype=np.float64):
+        self._deprecated_array_function_warning()
+        return self.zeros(shape, dtype=dtype)
+
+    def array_like(self, other):
+        self._deprecated_array_function_warning()
+        return self.zeros_like(other)
+
+    def array_per_worker(self, shape, dtype=np.float64):
+        self._deprecated_array_function_warning()
+        return self.zeros_per_worker(shape, dtype=dtype)
 
     def map(self, function, functor):
         """Apply a function to a functor.

@@ -132,6 +132,24 @@ def full_per_worker(*args, **kwargs):
     return get_default_context().full_per_worker(*args, **kwargs)
 
 
+@wraps(MapContext.array)
+def array(*args, **kwargs):
+    MapContext._deprecated_array_function_warning()
+    return get_default_context().zeros(*args, **kwargs)
+
+
+@wraps(MapContext.array_like)
+def array_like(*args, **kwargs):
+    MapContext._deprecated_array_function_warning()
+    return get_default_context().zeros_like(*args, **kwargs)
+
+
+@wraps(MapContext.array_per_worker)
+def array_per_worker(*args, **kwargs):
+    MapContext._deprecated_array_function_warning()
+    return get_default_context().zeros_per_worker(*args, **kwargs)
+
+
 @wraps(MapContext.map)
 def map(*args, **kwargs):
     return get_default_context().map(*args, **kwargs)
