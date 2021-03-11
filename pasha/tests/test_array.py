@@ -9,7 +9,7 @@
 import pytest
 
 import numpy as np
-from pasha.context import MapContext, HeapContext
+from pasha.context import MapContext, HeapContext, ProcessContext
 
 
 class _AllocTestContext(MapContext):
@@ -20,8 +20,8 @@ class _AllocTestContext(MapContext):
 
 
 @pytest.mark.parametrize(
-    'ctx_cls', [_AllocTestContext, HeapContext],
-    ids=['MapContext', 'HeapContext'])
+    'ctx_cls', [_AllocTestContext, HeapContext, ProcessContext],
+    ids=['MapContext', 'HeapContext', 'ProcessContext'])
 @pytest.mark.parametrize(
     ['method', 'expected', 'extra_kwargs'],
     [('empty', None, {}), ('zeros', 0.0, {}), ('ones', 1.0, {}),
@@ -49,8 +49,8 @@ def test_array(ctx_cls, method, expected, extra_kwargs, shape_in, shape_out,
 
 
 @pytest.mark.parametrize(
-    'ctx_cls', [_AllocTestContext, HeapContext],
-    ids=['MapContext', 'HeapContext'])
+    'ctx_cls', [_AllocTestContext, HeapContext, ProcessContext],
+    ids=['MapContext', 'HeapContext', 'ProcessContext'])
 @pytest.mark.parametrize(
     ['method', 'expected', 'extra_kwargs'],
     [('empty', None, {}), ('zeros', 0.0, {}), ('ones', 1.0, {}),
@@ -83,8 +83,8 @@ def test_array_like(ctx_cls, method, expected, extra_kwargs, shape_in,
 
 
 @pytest.mark.parametrize(
-    'ctx_cls', [_AllocTestContext, HeapContext],
-    ids=['MapContext', 'HeapContext'])
+    'ctx_cls', [_AllocTestContext, HeapContext, ProcessContext],
+    ids=['MapContext', 'HeapContext', 'ProcessContext'])
 @pytest.mark.parametrize(
     ['method', 'expected', 'extra_kwargs'],
     [('empty', None, {}), ('zeros', 0.0, {}), ('ones', 1.0, {}),
