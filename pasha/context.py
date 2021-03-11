@@ -47,7 +47,26 @@ class MapContext:
         else:
             return (self.num_workers,) + tuple(extra_shape)
 
-    def empty(self, shape, dtype=np.float64):
+    @staticmethod
+    def _like_kwargs(prototype, dtype, order, shape):
+        if dtype is None:
+            dtype = prototype.dtype
+
+        order = order.upper()
+
+        if order in ('K', 'A'):
+            # Defining the branch in this order allows both cases to be
+            # handled.
+            order = 'F' if prototype.flags.f_contiguous else 'C'
+        elif order not in ('C', 'F'):
+            raise ValueError('invalid memory order')
+
+        if shape is None:
+            shape = prototype.shape
+
+        return dict(dtype=dtype, order=order, shape=shape)
+
+    def empty(self, shape, dtype=np.float64, order='C'):
         """Allocate an array shared with all workers.
 
         The implementation may decide how to back this memory, but it
@@ -58,6 +77,9 @@ class MapContext:
         Args:
             shape (int or tuple of ints): Shape of the array.
             dtype (DTypeLike, optional): Data type of the array.
+            order ('C' or 'F', optional): Whether store multiple
+                dimensions in row-major (C-style, default) or
+                column-major (Fortran-style) order.
 
         Returns:
             (numpy.ndarray) Created array object.
@@ -65,19 +87,27 @@ class MapContext:
 
         raise NotImplementedError('Context.empty')
 
-    def empty_like(self, other):
+    def empty_like(self, prototype, dtype=None, order='K', shape=None):
         """Allocate a shared array with the same shape/dtype as another.
 
         Args:
-            other (ArrayLike): Other array.
+            prototype (ArrayLike): Array to copy properties from.
+            dtype (DTypeLike, optional): Override data type of the
+                resulting array.
+            order ('C', 'F', 'A' or 'K', optional): Override memory
+                order of the resulting array ('C' or 'F'), keep the
+                same layout ('K') or use Fortran-style if and only if
+                prototype is Fortran-style ('A').
+            shape (int or tuple of ints): Override shape of the
+                resulting array.
 
         Returns:
             (numpy.ndarray) Created array object.
         """
 
-        return self.empty(other.shape, dtype=other.dtype)
+        return self.empty(**self._like_kwargs(prototype, dtype, order, shape))
 
-    def empty_per_worker(self, shape, dtype=np.float64):
+    def empty_per_worker(self, shape, dtype=np.float64, order='C'):
         """Allocate a shared array for each worker.
 
         The returned array will contain an additional prepended axis
@@ -89,74 +119,80 @@ class MapContext:
         Args:
             shape (int or tuple of ints): Shape of the array.
             dtype (DTypeLike, optional): Data type of the array.
+            order ('C' or 'F', optional): Whether store multiple
+                dimensions in row-major (C-style, default) or
+                column-major (Fortran-style) order.
 
         Returns:
             (numpy.ndarray) Created array object.
         """
 
-        return self.empty(self._per_worker_shape(shape), dtype=dtype)
+        return self.empty(self._per_worker_shape(shape), dtype=dtype,
+                          order=order)
 
-    def zeros(self, shape, dtype=np.float64):
+    def zeros(self, shape, dtype=np.float64, order='C'):
         """Allocate an initialized array.
 
         Equivalent to :meth:`Context.empty`, but all elements are
         initialized to zero.
         """
 
-        array = self.empty(shape, dtype=dtype)
+        array = self.empty(shape, dtype=dtype, order=order)
         array[:] = 0
 
         return array
 
-    def zeros_like(self, other):
+    def zeros_like(self, prototype, dtype=None, order='K', shape=None):
         """Allocate an initialized array with the same shape/dtype.
 
         Equivalent to :meth:`Context.empty_like`, but all elements are
         initialized to zero.
         """
 
-        return self.zeros(other.shape, dtype=other.dtype)
+        return self.zeros(**self._like_kwargs(prototype, dtype, order, shape))
 
-    def zeros_per_worker(self, shape, dtype=np.float64):
+    def zeros_per_worker(self, shape, dtype=np.float64, order='C'):
         """Allocate an initialized array for each worker.
 
         Equivalent to :meth:`Context.empty_per_worker`, but all elements
         are initialized to zero.
         """
 
-        return self.zeros(self._per_worker_shape(shape), dtype=dtype)
+        return self.zeros(self._per_worker_shape(shape), dtype=dtype,
+                          order=order)
 
-    def ones(self, shape, dtype=np.float64):
+    def ones(self, shape, dtype=np.float64, order='C'):
         """Allocate an initialized array shared with all workers.
 
         Equivalent to :meth:`Context.empty`, but all elements are
         initialized to one.
         """
 
-        array = self.empty(shape, dtype=dtype)
+        array = self.empty(shape, dtype=dtype, order=order)
         array[:] = 1
 
         return array
 
-    def ones_like(self, other):
+    def ones_like(self, prototype, dtype=None, order='K', shape=None):
         """Allocate an initialized array with the same shape/dtype.
 
         Equivalent to :meth:`Context.empty_like`, but all elements are
         initialized to one.
         """
 
-        return self.ones(other.shape, dtype=other.dtype)
+        return self.ones(**self._like_kwargs(prototype, dtype, order, shape))
 
-    def ones_per_worker(self, shape, dtype=np.float64):
+    def ones_per_worker(self, shape, dtype=np.float64, order='C'):
         """Allocate an initialized array for each worker.
 
         Equivalent to :meth:`Context.empty_per_worker`, but all elements
         are initialized to one.
         """
 
-        return self.ones(self._per_worker_shape(shape), dtype=dtype)
+        return self.ones(self._per_worker_shape(shape), dtype=dtype,
+                         order=order)
 
-    def full(self, shape, fill_value, dtype=np.float64):
+    def full(self, shape, fill_value, dtype=np.float64, order='C'):
         """Allocate an initialized array shared with all workers.
 
         Equivalent to :meth:`Context.empty`, but all elements are
@@ -166,33 +202,46 @@ class MapContext:
             shape (int or tuple of ints): Shape of the array.
             fill_value (scalar or ArrayLike): Value to initialize to.
             dtype (DTypeLike, optional): Data type of the array.
+            order ('C' or 'F', optional): Whether store multiple
+                dimensions in row-major (C-style, default) or
+                column-major (Fortran-style) order.
 
         Returns:
             (numpy.ndarray) Created array object.
         """
 
-        array = self.empty(shape, dtype=dtype)
+        array = self.empty(shape, dtype=dtype, order=order)
         array[:] = fill_value
 
         return array
 
-    def full_like(self, other, fill_value):
+    def full_like(self, prototype, fill_value, dtype=None, order='K',
+                  shape=None):
         """Allocate an initialized array with the same shape/dtype.
 
         Equivalent to :meth:`Context.empty_like`, but all elements are
         initialized to the specified fill value.
 
         Args:
-            other (ArrayLike): Other array.
+            prototype (ArrayLike): Array to copy properties from.
             fill_value (scalar or ArrayLike): Value to initialize to.
+            dtype (DTypeLike, optional): Override data type of the
+                resulting array.
+            order ('C', 'F', 'A' or 'K', optional): Override memory
+                order of the resulting array ('C' or 'F'), keep the
+                same layout ('K') or use Fortran-style if and only if
+                prototype is Fortran-style ('A').
+            shape (int or tuple of ints): Override shape of the
+                resulting array.
 
         Returns:
             (numpy.ndarray) Created array object.
         """
 
-        return self.full(other.shape, fill_value, dtype=other.dtype)
+        return self.full(**self._like_kwargs(prototype, dtype, order, shape),
+                         fill_value=fill_value)
 
-    def full_per_worker(self, shape, fill_value, dtype=np.float64):
+    def full_per_worker(self, shape, fill_value, dtype=np.float64, order='C'):
         """Allocate an initialized array for each worker.
 
         Equivalent to :meth:`Context.empty_per_worker`, but all elements
@@ -200,7 +249,7 @@ class MapContext:
         """
 
         return self.full(self._per_worker_shape(shape), fill_value,
-                         dtype=dtype)
+                         dtype=dtype, order=order)
 
     def map(self, function, functor):
         """Apply a function to a functor.
@@ -249,17 +298,17 @@ class MapContext:
 class HeapContext(MapContext):
     """Abstract map context allocating arrays on the heap."""
 
-    def empty(self, shape, dtype=np.float64):
-        return np.empty(shape, dtype=dtype)
+    def empty(self, shape, dtype=np.float64, order='C'):
+        return np.empty(shape, dtype=dtype, order=order)
 
-    def zeros(self, shape, dtype=np.float64):
-        return np.zeros(shape, dtype=dtype)
+    def zeros(self, shape, dtype=np.float64, order='C'):
+        return np.zeros(shape, dtype=dtype, order=order)
 
-    def ones(self, shape, dtype=np.float64):
-        return np.ones(shape, dtype=dtype)
+    def ones(self, shape, dtype=np.float64, order='C'):
+        return np.ones(shape, dtype=dtype, order=order)
 
-    def full(self, shape, fill_value, dtype=np.float64):
-        return np.full(shape, fill_value, dtype=dtype)
+    def full(self, shape, fill_value, dtype=np.float64, order='C'):
+        return np.full(shape, fill_value, dtype=dtype, order=order)
 
 
 class SerialContext(HeapContext):
@@ -351,7 +400,7 @@ class ProcessContext(PoolContext):
     The memory allocated by this context is backed by anonymous mappings
     via `mmap` and thus shared for both reads and writes with all worker
     processes created after the allocation. This requires the start
-    method to be `fork`, which is only supported on Unix systems.
+    method to be `fork`, which is only supported on *nix systems.
     """
 
     _instance = None
@@ -368,7 +417,7 @@ class ProcessContext(PoolContext):
 
         self.id_queue = self.mp_ctx.Queue()
 
-    def empty(self, shape, dtype=np.float64):
+    def empty(self, shape, dtype=np.float64, order='C'):
         if isinstance(shape, int):
             n_elements = shape
         else:
@@ -385,7 +434,7 @@ class ProcessContext(PoolContext):
                         prot=mmap.PROT_READ | mmap.PROT_WRITE)
 
         return np.frombuffer(memoryview(buf)[:n_bytes],
-                             dtype=dtype).reshape(shape)
+                             dtype=dtype).reshape(shape, order=order)
 
     def map(self, function, functor):
         super().map(function, functor, self.mp_ctx.Pool)
