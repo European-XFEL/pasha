@@ -10,46 +10,91 @@ import pytest
 
 import numpy as np
 import pasha as psh
-from pasha.context import MapContext
+from pasha.context import MapContext, ProcessContext
 from pasha.functor import Functor
 
 
+
+@pytest.mark.parametrize(
+    'ctx_cls', [MapContext, ProcessContext],
+    ids=['MapContext', 'ProcessContext'])
+@pytest.mark.parametrize(
+    'method', ['alloc', 'alloc_per_worker'])
 @pytest.mark.parametrize(
     ['shape_in', 'shape_out'], [(3, (3,)), ((3, 2), (3, 2))],
     ids=['int', 'tuple'])
-def test_array(shape_in, shape_out):
-    """Test MapContext.array."""
+@pytest.mark.parametrize(
+    ['dtype_in', 'dtype_out'], [(None, np.float64), (np.uint16, np.uint16)],
+    ids=['default_dtype', 'fix_dtype'])
+@pytest.mark.parametrize(
+    ['order_in', 'order_flag'], [('C', 'c'), ('F', 'f')], ids=['C', 'Fortran'])
+@pytest.mark.parametrize(
+    'fill', [None, 0, 1, 42], ids=['empty', 'zero', 'one', 'real'])
+def test_alloc_direct(ctx_cls, method, shape_in, shape_out,
+                      dtype_in, dtype_out, order_in, order_flag, fill):
+    """Test direct allocation."""
 
-    ctx = MapContext(num_workers=1)
+    ctx = ctx_cls(num_workers=3)
 
-    array = ctx.array(shape_in, np.uint32)
-    assert array.shape == shape_out
-    assert array.dtype == np.uint32
+    array = getattr(ctx, method)(shape=shape_in, dtype=dtype_in,
+                                 order=order_in, fill=fill, like=None)
 
+    if method == 'alloc_per_worker':
+        if order_in == 'C':
+            assert array.shape == (ctx.num_workers,) + shape_out
+        elif order_in == 'F':
+            assert array.shape == shape_out + (ctx.num_workers,)
+    else:
+        assert array.shape == shape_out
 
-def test_array_like():
-    """Test MapContext.array_like."""
+    assert array.dtype == dtype_out
+    assert getattr(array.flags, f'{order_flag}_contiguous')
 
-    ctx = MapContext(num_workers=1)
-
-    array_in = np.random.rand(2, 3, 4).astype(np.float32)
-    array_out = ctx.array_like(array_in)
-
-    assert array_in.shape == array_out.shape
-    assert array_in.dtype == array_out.dtype
+    if fill is not None:
+        np.testing.assert_allclose(array, fill)
 
 
 @pytest.mark.parametrize(
-    ['shape_in', 'shape_out'], [(3, (3,)), ((3, 2), (3, 2))],
-    ids=['int', 'tuple'])
-def test_array_per_worker(shape_in, shape_out):
-    """Test MapContext.array_per_worker."""
+    'ctx_cls', [MapContext, ProcessContext],
+    ids=['MapContext', 'ProcessContext'])
+@pytest.mark.parametrize(
+    'method', ['alloc', 'alloc_per_worker'])
+@pytest.mark.parametrize(
+    ['shape_in', 'shape_out'], [(None, (2, 3, 4)), ((6, 4), (6, 4))],
+    ids=['keep_shape', 'fix_shape'])
+@pytest.mark.parametrize(
+    ['dtype_in', 'dtype_out'], [(None, np.float32), (np.uint16, np.uint16)],
+    ids=['keep_dtype', 'fix_dtype'])
+@pytest.mark.parametrize(
+    ['order_like', 'order_in', 'order_flag'],
+    [('C', None, 'c'), ('F', None, 'f'), ('C', 'C', 'c'), ('F', 'F', 'f'),
+     ('C', 'F', 'f'), ('F', 'C', 'c')],
+    ids=['keep_C', 'keep_F', 'fix_CC', 'fix_FF', 'fix_CF', 'fix_FC'])
+@pytest.mark.parametrize(
+    'fill', [None, 0, 1, 42], ids=['empty', 'zero', 'one', 'real'])
+def test_alloc_like(ctx_cls, method, shape_in, shape_out, dtype_in, dtype_out,
+                    order_like, order_in, order_flag, fill):
+    """Test allocation based on existing ArrayLike."""
 
-    ctx = MapContext(num_workers=4)
+    ctx = ctx_cls(num_workers=3)
 
-    array = ctx.array_per_worker(shape_in, np.uint32)
-    assert array.shape == (4,) + shape_out
-    assert array.dtype == np.uint32
+    array_in = np.random.rand(2, 3, 4).astype(np.float32, order=order_like)
+    array_out = getattr(ctx, method)(shape=shape_in, dtype=dtype_in,
+                                     order=order_in, fill=fill, like=array_in)
+
+    if method == 'alloc_per_worker':
+        if order_in == 'C':
+            assert array_out.shape == (ctx.num_workers,) + shape_out
+        elif order_in == 'F':
+            assert array_out.shape == shape_out + (ctx.num_workers,)
+    else:
+        assert array_out.shape == shape_out
+
+    assert array_out.dtype == dtype_out
+    assert getattr(array_out.flags, f'{order_flag}_contiguous')
+
+    if fill is not None:
+        np.testing.assert_allclose(array_out, fill)
 
 
 def test_run_worker():
@@ -82,7 +127,7 @@ def test_map(ctx):
     """Test map operation for each context type."""
 
     inp = np.random.rand(100)
-    outp = ctx.array(inp.shape, inp.dtype)
+    outp = ctx.alloc(shape=inp.shape, dtype=inp.dtype)
 
     def multiply(worker_id, index, value):
         outp[index] = 3 * value
