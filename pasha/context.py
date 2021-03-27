@@ -6,6 +6,8 @@
 # Copyright (c) 2020, European X-Ray Free-Electron Laser Facility GmbH.
 # All rights reserved.
 
+from numbers import Integral
+
 import numpy as np
 
 from .functor import Functor
@@ -39,56 +41,153 @@ class MapContext:
 
         self.num_workers = num_workers
 
-    def array(self, shape, dtype=np.float64):
-        """Allocate an array shared with all workers.
+    @staticmethod
+    def _resolve_alloc(shape, dtype, order, like):
+        """Resolve allocation arguments.
+
+        This method resolves the arguments passed to
+        :method:`MapContext.alloc` and fills any omitted values.
+
+        Returns:
+            (tuple, DtypeLike, str): Resolved shape, data-type and
+                memory order.
+        """
+        if like is not None:
+            shape = shape if shape is not None else like.shape
+            dtype = dtype if dtype is not None else like.dtype
+
+            try:
+                if order is None:
+                    # Check for C contiguity first, as one-dimensional
+                    # arrays may be both C and F-style at the same time.
+                    # If neither is the case, make the result C-style
+                    # anyway.
+                    if like.flags.c_contiguous:
+                        order = 'C'
+                    elif like.flags.f_contiguous:
+                        order = 'F'
+                    else:
+                        order = 'C'
+            except AttributeError:
+                # Existance of the flags property may not be considered
+                # required for an ArrayLike, so in case it's not just
+                # go for C-style.
+                order = 'C'
+
+        elif shape is None:
+            raise ValueError('array shape must be specified')
+
+        else:
+            dtype = dtype if dtype is not None else np.float64
+            order = order if order is not None else 'C'
+
+        if isinstance(shape, Integral):
+            shape = (shape,)
+        elif not isinstance(shape, tuple):
+            shape = tuple(shape)
+
+        return shape, dtype, order
+
+    @staticmethod
+    def _alloc(shape, dtype, order):
+        """Low-level allocation.
+
+        In most instances, it is recommended to use the high-level
+        method :method:`MapContext.alloc` instead. Context
+        implemenations can override this method to provide alternative
+        means of providing memory shared with all workers, e.g. via
+        shared memory segments across processes.
+
+        Note that none of the arguments of this method are optional.
+
+        The default implementation allocates directly on the heap.
+
+        Args:
+            shape (tuple): Shape of the array.
+            dtype (DtypeLike): Desired data-type for the array.
+            order ('C' or 'F') C-style or Fortran-style memory order.
+
+        Returns:
+            (numpy.ndarray) Created array object.
+        """
+
+        return np.empty(shape, dtype, order)
+
+    def alloc(self, shape=None, dtype=None, order=None, fill=None, like=None):
+        """Allocate an array guaranteed to be shared with all workers.
 
         The implementation may decide how to back this memory, but it
         is required that all workers of this context may read AND write
-        to this memory. The base implementation allocates directly
-        on the heap.
+        to this memory. By default, it allocates directly on the heap.
+
+        Only the shape argument is required for allocation to succeed,
+        however it may be omitted if an existing ArrayLike object is
+        passed via the like argument whose shape is taken.
+
+        The dtype and order arguments have the default values np.float64
+        and 'C' if omitted or are taken from the ArrayLike object passed
+        to like. Only C-style or Fortran-style order may be assumed to
+        be supported by all context implementations.
+
+        If fill is omitted, the resulting array is uninitialized.
+
+        Any specified argument always takes precedence over values
+        inferred from an ArrayLike object passed to like.
 
         Args:
-            shape (int or tuple of ints): Shape of the array.
-            dtype (data-type): Desired data-type for the array.
+            shape (int or tuple of ints, optional): Shape of the array.
+            dtype (DTypeLike, optional): Desired data-type for the array.
+            order ('C' or 'F', optional): Whether to store multiple
+                dimensions in row-major (C-style, default) or
+                column-major (Fortran-style).
+            fill (Scalar or ArrayLike, optional): Initialization value.
+            like (ArrayLike): Array to cope shape, dtype and order from.
 
         Returns:
             (numpy.ndarray) Created array object.
         """
 
-        return np.zeros(shape, dtype=dtype)
+        array = self._alloc(*self._resolve_alloc(shape, dtype, order, like))
 
-    def array_like(self, other):
-        """Allocate an array with the same shape and dtype as another.
+        if fill is not None:
+            array[:] = fill
 
-        Args:
-            other (ArrayLike): Other array.
+        return array
 
-        Returns:
-            (numpy.ndarray) Created array object.
-        """
-
-        return self.array(other.shape, other.dtype)
-
-    def array_per_worker(self, shape, dtype=np.float64):
+    def alloc_per_worker(self, shape=None, dtype=None, order=None, fill=None,
+                         like=None):
         """Allocate a shared array for each worker.
 
-        The returned array will contain an additional prepended axis
-        with its shape corresponding to the number of workers in this
-        context, i.e. with one dimension more than specified by the
-        shape parameter. These are useful for parallelized reduction
-        operations, where each worker may work with its own accumulator.
+        The returned array will contain an additional axis with its
+        shape corresponding to the number of workers in this context,
+        i.e. with one dimension more than specified by the shape
+        parameter. In row-major order (C-style) the axis is prepended,
+        in column-major order (Fortran-style) it is appended.
+
+        These are useful for parallelized reduction operations, where
+        each worker may work with its own accumulator, which are all
+        reduced after mapping (e.g. via sum).
 
         Args:
-            Same as array()
+            Same as alloc()
 
         Returns:
             (numpy.ndarray) Created array object.
         """
 
-        if isinstance(shape, int):
-            return self.array((self.num_workers, shape), dtype)
-        else:
-            return self.array((self.num_workers,) + tuple(shape), dtype)
+        shape, dtype, order = self._resolve_alloc(shape, dtype, order, like)
+
+        if order == 'C':
+            shape = (self.num_workers,) + shape
+        elif order == 'F':
+            shape = shape + (self.num_workers,)
+
+        array = self._alloc(shape, dtype, order)
+
+        if fill is not None:
+            array[:] = fill
+
+        return array
 
     def map(self, function, functor):
         """Apply a function to a functor.
@@ -240,13 +339,12 @@ class ProcessContext(PoolContext):
 
         self.id_queue = self.mp_ctx.Queue()
 
-    def array(self, shape, dtype=np.float64):
-        if isinstance(shape, int):
-            n_elements = shape
-        else:
-            n_elements = 1
-            for _s in shape:
-                n_elements *= _s
+    def _alloc(self, shape, dtype, order):
+        # Allocate shared memory via mmap.
+
+        n_elements = 1
+        for _s in shape:
+            n_elements *= _s
 
         import mmap
         n_bytes = n_elements * np.dtype(dtype).itemsize
@@ -256,8 +354,8 @@ class ProcessContext(PoolContext):
                         flags=mmap.MAP_SHARED | mmap.MAP_ANONYMOUS,
                         prot=mmap.PROT_READ | mmap.PROT_WRITE)
 
-        return np.frombuffer(memoryview(buf)[:n_bytes],
-                             dtype=dtype).reshape(shape)
+        return np.frombuffer(memoryview(buf)[:n_bytes], dtype=dtype) \
+            .reshape(shape, order=order)
 
     def map(self, function, functor):
         super().map(function, functor, self.mp_ctx.Pool)
