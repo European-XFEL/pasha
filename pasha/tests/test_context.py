@@ -14,7 +14,6 @@ from pasha.context import MapContext, ProcessContext
 from pasha.functor import Functor
 
 
-
 @pytest.mark.parametrize(
     'ctx_cls', [MapContext, ProcessContext],
     ids=['MapContext', 'ProcessContext'])

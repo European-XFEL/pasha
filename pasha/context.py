@@ -51,8 +51,8 @@ class MapContext:
                 memory order.
         """
         if like is not None:
-            shape = shape or like.shape
-            dtype = dtype or like.dtype
+            shape = shape if shape is not None else like.shape
+            dtype = dtype if dtype is not None else like.dtype
 
             try:
                 if order is None:
@@ -76,8 +76,8 @@ class MapContext:
             raise ValueError('array shape must be specified')
 
         else:
-            dtype = dtype or np.float64
-            order = order or 'C'
+            dtype = dtype if dtype is not None else np.float64
+            order = order if order is not None else 'C'
 
         if isinstance(shape, int):
             shape = (shape,)
