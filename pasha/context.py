@@ -55,8 +55,21 @@ class MapContext:
             dtype = dtype or like.dtype
 
             try:
-                order = order or ('F' if like.flags.f_contiguous else 'C')
+                if order is None:
+                    # Check for C contiguity first, as one-dimensional
+                    # arrays may be both C and F-style at the same time.
+                    # If neither is the case, make the result C-style
+                    # anyway.
+                    if like.flags.c_contiguous:
+                        order = 'C'
+                    elif like.flags.f_contiguous:
+                        order = 'F'
+                    else:
+                        order = 'C'
             except AttributeError:
+                # Existance of the flags property may not be considered
+                # required for an ArrayLike, so in case it's not just
+                # go for C-style.
                 order = 'C'
 
         elif shape is None:
