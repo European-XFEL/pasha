@@ -39,6 +39,18 @@ class MapContext:
 
         self.num_workers = num_workers
 
+    def _run_hook(self, hook_type, function, *args):
+        try:
+            hooks = function._pasha_hooks_
+        except AttributeError:
+            # No _pasha_hooks_ attribute.
+            pass
+        else:
+            for hook in hooks:
+                function = getattr(hook, hook_type)(self, function, *args)
+
+        return function
+
     @staticmethod
     def _resolve_alloc(shape, dtype, order, like):
         """Resolve allocation arguments.
@@ -207,8 +219,7 @@ class MapContext:
 
         raise NotImplementedError('map')
 
-    @staticmethod
-    def run_worker(function, functor, share, worker_id):
+    def run_worker(self, function, functor, share, worker_id):
         """Main worker loop.
 
         This staticmethod contains the actual inner loop for a worker,
@@ -228,8 +239,12 @@ class MapContext:
             None
         """
 
+        function = self._run_hook('pre_worker', function, worker_id)
+
         for entry in functor.iterate(share):
             function(worker_id, *entry)
+
+        self._run_hook('post_worker', function, worker_id)
 
 
 class SerialContext(MapContext):
@@ -244,7 +259,10 @@ class SerialContext(MapContext):
 
     def map(self, function, functor):
         functor = Functor.try_wrap(functor)
+
+        function = self._run_hook('pre_map', function)
         self.run_worker(function, functor, next(iter(functor.split(1))), 0)
+        self._run_hook('post_map', function)
 
 
 class PoolContext(MapContext):
@@ -285,8 +303,10 @@ class PoolContext(MapContext):
         for worker_id in range(self.num_workers):
             self.id_queue.put(worker_id)
 
+        function = self._run_hook('pre_map', function)
         with pool_cls(self.num_workers, self.init_worker, (functor,)) as p:
             p.map(self.run_worker, functor.split(self.num_workers))
+        self._run_hook('post_map', function)
 
 
 class ThreadContext(PoolContext):

@@ -10,10 +10,12 @@ __version__ = '1.0.0'
 
 from functools import wraps
 
-from .context import (
-    MapContext, SerialContext, ThreadContext, ProcessContext)  # noqa
+from .context import (  # noqa
+    MapContext, SerialContext, ThreadContext, ProcessContext)
 from .functor import (  # noqa
     SequenceFunctor, NdarrayFunctor, DataArrayFunctor, ExtraDataFunctor)
+from .util import (  # noqa
+    with_init, with_finalize, with_local_copies, with_reduction)
 
 
 _default_context = None
