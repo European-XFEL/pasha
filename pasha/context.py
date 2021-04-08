@@ -113,8 +113,8 @@ class MapContext:
 
         return np.empty(shape, dtype, order)
 
-    def alloc(self, shape=None, dtype=None, order=None, fill=None, like=None,
-              per_worker=False):
+    def alloc(self, shape=None, dtype=None, *,
+              order=None, fill=None, like=None, per_worker=False):
         """Allocate an array guaranteed to be shared with all workers.
 
         The implementation may decide how to back this memory, but it
