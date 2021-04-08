@@ -77,11 +77,6 @@ def alloc(*args, **kwargs):
     return get_default_context().alloc(*args, **kwargs)
 
 
-@wraps(MapContext.alloc_per_worker)
-def alloc_per_worker(*args, **kwargs):
-    return get_default_context().alloc_per_worker(*args, **kwargs)
-
-
 @wraps(MapContext.map)
 def map(*args, **kwargs):
     return get_default_context().map(*args, **kwargs)

@@ -113,7 +113,8 @@ class MapContext:
 
         return np.empty(shape, dtype, order)
 
-    def alloc(self, shape=None, dtype=None, order=None, fill=None, like=None):
+    def alloc(self, shape=None, dtype=None, order=None, fill=None, like=None,
+              per_worker=False):
         """Allocate an array guaranteed to be shared with all workers.
 
         The implementation may decide how to back this memory, but it
@@ -131,6 +132,14 @@ class MapContext:
 
         If fill is omitted, the resulting array is uninitialized.
 
+        The per_worker argument automatically adds an axis to the
+        resulting array corresponding to the number of workers in this
+        context, i.e. on top of the shape specified via other means. In
+        row-major order (C-style) the axis is prepended, in column-major
+        order (Fortran-style) it is appended. This is useful for
+        parallelized reduction operations, where each worker may work
+        with its own accumulator, which are all reduced after mapping.
+
         Any specified argument always takes precedence over values
         inferred from an ArrayLike object passed to like.
 
@@ -142,34 +151,8 @@ class MapContext:
                 column-major (Fortran-style).
             fill (Scalar or ArrayLike, optional): Initialization value.
             like (ArrayLike): Array to cope shape, dtype and order from.
-
-        Returns:
-            (numpy.ndarray) Created array object.
-        """
-
-        array = self._alloc(*self._resolve_alloc(shape, dtype, order, like))
-
-        if fill is not None:
-            array[:] = fill
-
-        return array
-
-    def alloc_per_worker(self, shape=None, dtype=None, order=None, fill=None,
-                         like=None):
-        """Allocate a shared array for each worker.
-
-        The returned array will contain an additional axis with its
-        shape corresponding to the number of workers in this context,
-        i.e. with one dimension more than specified by the shape
-        parameter. In row-major order (C-style) the axis is prepended,
-        in column-major order (Fortran-style) it is appended.
-
-        These are useful for parallelized reduction operations, where
-        each worker may work with its own accumulator, which are all
-        reduced after mapping (e.g. via sum).
-
-        Args:
-            Same as alloc()
+            per_worker (bool, optional): Whether to add an additional
+                axis corresponding to the number of workers.
 
         Returns:
             (numpy.ndarray) Created array object.
@@ -177,10 +160,11 @@ class MapContext:
 
         shape, dtype, order = self._resolve_alloc(shape, dtype, order, like)
 
-        if order == 'C':
-            shape = (self.num_workers,) + shape
-        elif order == 'F':
-            shape = shape + (self.num_workers,)
+        if per_worker:
+            if order == 'C':
+                shape = (self.num_workers,) + shape
+            elif order == 'F':
+                shape = shape + (self.num_workers,)
 
         array = self._alloc(shape, dtype, order)
 

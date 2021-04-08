@@ -18,8 +18,6 @@ from pasha.functor import Functor
     'ctx_cls', [MapContext, ProcessContext],
     ids=['MapContext', 'ProcessContext'])
 @pytest.mark.parametrize(
-    'method', ['alloc', 'alloc_per_worker'])
-@pytest.mark.parametrize(
     ['shape_in', 'shape_out'], [(3, (3,)), ((3, 2), (3, 2))],
     ids=['int', 'tuple'])
 @pytest.mark.parametrize(
@@ -29,16 +27,18 @@ from pasha.functor import Functor
     ['order_in', 'order_flag'], [('C', 'c'), ('F', 'f')], ids=['C', 'Fortran'])
 @pytest.mark.parametrize(
     'fill', [None, 0, 1, 42], ids=['empty', 'zero', 'one', 'real'])
-def test_alloc_direct(ctx_cls, method, shape_in, shape_out,
-                      dtype_in, dtype_out, order_in, order_flag, fill):
+@pytest.mark.parametrize(
+    'per_worker', [False, True], ids=['single', 'per_worker'])
+def test_alloc_direct(ctx_cls, shape_in, shape_out, dtype_in, dtype_out,
+                      order_in, order_flag, fill, per_worker):
     """Test direct allocation."""
 
     ctx = ctx_cls(num_workers=3)
 
-    array = getattr(ctx, method)(shape=shape_in, dtype=dtype_in,
-                                 order=order_in, fill=fill, like=None)
+    array = ctx.alloc(shape=shape_in, dtype=dtype_in, order=order_in,
+                      fill=fill, like=None, per_worker=per_worker)
 
-    if method == 'alloc_per_worker':
+    if per_worker:
         if order_in == 'C':
             assert array.shape == (ctx.num_workers,) + shape_out
         elif order_in == 'F':
@@ -57,8 +57,6 @@ def test_alloc_direct(ctx_cls, method, shape_in, shape_out,
     'ctx_cls', [MapContext, ProcessContext],
     ids=['MapContext', 'ProcessContext'])
 @pytest.mark.parametrize(
-    'method', ['alloc', 'alloc_per_worker'])
-@pytest.mark.parametrize(
     ['shape_in', 'shape_out'], [(None, (2, 3, 4)), ((6, 4), (6, 4))],
     ids=['keep_shape', 'fix_shape'])
 @pytest.mark.parametrize(
@@ -70,18 +68,20 @@ def test_alloc_direct(ctx_cls, method, shape_in, shape_out,
      ('C', 'F', 'f'), ('F', 'C', 'c')],
     ids=['keep_C', 'keep_F', 'fix_CC', 'fix_FF', 'fix_CF', 'fix_FC'])
 @pytest.mark.parametrize(
+    'per_worker', [False, True], ids=['single', 'per_worker'])
+@pytest.mark.parametrize(
     'fill', [None, 0, 1, 42], ids=['empty', 'zero', 'one', 'real'])
-def test_alloc_like(ctx_cls, method, shape_in, shape_out, dtype_in, dtype_out,
-                    order_like, order_in, order_flag, fill):
+def test_alloc_like(ctx_cls, shape_in, shape_out, dtype_in, dtype_out,
+                    order_like, order_in, order_flag, fill, per_worker):
     """Test allocation based on existing ArrayLike."""
 
     ctx = ctx_cls(num_workers=3)
 
     array_in = np.random.rand(2, 3, 4).astype(np.float32, order=order_like)
-    array_out = getattr(ctx, method)(shape=shape_in, dtype=dtype_in,
-                                     order=order_in, fill=fill, like=array_in)
+    array_out = ctx.alloc(shape=shape_in, dtype=dtype_in, order=order_in,
+                          fill=fill, like=array_in, per_worker=per_worker)
 
-    if method == 'alloc_per_worker':
+    if per_worker:
         if order_in == 'C':
             assert array_out.shape == (ctx.num_workers,) + shape_out
         elif order_in == 'F':
