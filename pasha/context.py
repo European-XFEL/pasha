@@ -89,7 +89,7 @@ class MapContext:
         return shape, dtype, order
 
     @staticmethod
-    def _alloc(shape, dtype, order):
+    def _alloc(shape, dtype, order, fill):
         """Low-level allocation.
 
         In most instances, it is recommended to use the high-level
@@ -106,12 +106,19 @@ class MapContext:
             shape (tuple): Shape of the array.
             dtype (DtypeLike): Desired data-type for the array.
             order ('C' or 'F') C-style or Fortran-style memory order.
+            fill (Scalar, ArrayLike or None): Initialization value or
+                None if the array may be unitialized.
 
         Returns:
             (numpy.ndarray) Created array object.
         """
 
-        return np.empty(shape, dtype, order)
+        if fill is None:
+            return np.empty(shape, dtype, order)
+        elif fill == 0:
+            return np.zeros(shape, dtype, order)
+        else:
+            return np.full(shape, fill, dtype, order)
 
     def alloc(self, shape=None, dtype=None, *,
               order=None, fill=None, like=None, per_worker=False):
@@ -166,10 +173,7 @@ class MapContext:
             elif order == 'F':
                 shape = shape + (self.num_workers,)
 
-        array = self._alloc(shape, dtype, order)
-
-        if fill is not None:
-            array[:] = fill
+        array = self._alloc(shape, dtype, order, fill)
 
         return array
 
@@ -323,7 +327,7 @@ class ProcessContext(PoolContext):
 
         self.id_queue = self.mp_ctx.Queue()
 
-    def _alloc(self, shape, dtype, order):
+    def _alloc(self, shape, dtype, order, fill):
         # Allocate shared memory via mmap.
 
         n_elements = 1
@@ -338,8 +342,15 @@ class ProcessContext(PoolContext):
                         flags=mmap.MAP_SHARED | mmap.MAP_ANONYMOUS,
                         prot=mmap.PROT_READ | mmap.PROT_WRITE)
 
-        return np.frombuffer(memoryview(buf)[:n_bytes], dtype=dtype) \
+        array = np.frombuffer(memoryview(buf)[:n_bytes], dtype=dtype) \
             .reshape(shape, order=order)
+
+        if fill is not None and fill != 0:
+            # POSIX guarantess allocation with MAP_ANONYMOUS to be
+            # initialized with zeroes.
+            array[:] = fill
+
+        return array
 
     def map(self, function, functor):
         super().map(function, functor, self.mp_ctx.Pool)
