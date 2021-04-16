@@ -72,19 +72,9 @@ def set_default_context(ctx_or_method, *args, **kwargs):
     _default_context = ctx
 
 
-@wraps(MapContext.array)
-def array(*args, **kwargs):
-    return get_default_context().array(*args, **kwargs)
-
-
-@wraps(MapContext.array_like)
-def array_like(*args, **kwargs):
-    return get_default_context().array_like(*args, **kwargs)
-
-
-@wraps(MapContext.array_per_worker)
-def array_per_worker(*args, **kwargs):
-    return get_default_context().array_per_worker(*args, **kwargs)
+@wraps(MapContext.alloc)
+def alloc(*args, **kwargs):
+    return get_default_context().alloc(*args, **kwargs)
 
 
 @wraps(MapContext.map)
