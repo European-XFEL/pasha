@@ -15,7 +15,7 @@ inp = np.random.rand(100)
 # Allocate output array via pasha. The returned array is
 # guaranteed to be accessible from any worker, and may
 # reside in shared memory.
-outp = psh.array(100)
+outp = psh.alloc(like=inp)
 
 # Define a kernel function multiplying each value with 3.
 def triple_it(worker_id, index, value):
@@ -27,7 +27,7 @@ psh.map(triple_it, inp)
 # Check the result
 np.testing.assert_allclose(outp, inp*3)
 ```
-The runtime environment is controlled by a map context. The default context object is `ProcessContext`, which uses `multiprocessing.Pool` to distribute the work across several processes. This context only works on \*nix systems supporting the fork() system call, as it expects any input data to be shared. When the process context is selected, `psh.array()` creates arrays in shared memory, so workers can write output data there and the caller can retrieve it with no memory copies.
+The runtime environment is controlled by a map context. The default context object is `ProcessContext`, which uses `multiprocessing.Pool` to distribute the work across several processes. This context only works on \*nix systems supporting the fork() system call, as it expects any input data to be shared. When the process context is selected, `psh.alloc()` creates arrays in shared memory, so workers can write output data there and the caller can retrieve it with no memory copies.
 
 You may either create an explicit context object and use it directly or change the default context, e.g.
 
