@@ -15,7 +15,7 @@ inp = np.random.rand(100)
 # Allocate output array via pasha. The returned array is
 # guaranteed to be accessible from any worker, and may
 # reside in shared memory.
-outp = psh.array(100)
+outp = psh.alloc(like=inp)
 
 # Define a kernel function multiplying each value with 3.
 def triple_it(worker_id, index, value):
