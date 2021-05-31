@@ -35,7 +35,7 @@ setup(
                 'using shared memory with zero copies.',
     long_description=(parent_path / 'README.md').read_text(),
     long_description_content_type='text/markdown',
-    url="https://github.com/European-XFEL/pasha",
+    url='https://github.com/European-XFEL/pasha',
     author='Philipp Schmidt',
     author_email='philipp.schmidt@xfel.eu',
     license='BSD-3-Clause',
