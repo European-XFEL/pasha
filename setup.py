@@ -44,6 +44,12 @@ setup(
 
     python_requires='>=3.6',
     install_requires=['numpy'],
+    extras_require={
+        'test': [
+            'pytest',
+            'xarray',
+        ],
+    },
 
     classifiers=[
           'Development Status :: 3 - Alpha',
