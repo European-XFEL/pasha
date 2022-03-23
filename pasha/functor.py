@@ -266,9 +266,20 @@ class ExtraDataFunctor(Functor):
             # Same assumption as in DataArrayFunctor.
             return
 
-        import extra_data as xd
+        try:
+            from extra_data import DataCollection, SourceData, KeyData
+        except ImportError:
+            # Only support versions for which these types are top-level
+            # symbols.
+            return
 
-        if isinstance(value, (xd.DataCollection, xd.keydata.KeyData)):
+        if hasattr(SourceData, 'select_trains'):
+            # Added in EXtra-data 1.10.0.
+            supported_types = (DataCollection, SourceData, KeyData)
+        else:
+            supported_types = (DataCollection, KeyData)
+
+        if isinstance(value, supported_types):
             return cls(value)
 
     def split(self, num_workers):
@@ -286,7 +297,24 @@ class ExtraDataFunctor(Functor):
             for f in subobj.files:
                 f.close()
 
-        it = zip(range(*share.indices(self.n_trains)), subobj.trains())
+        index_it = range(*share.indices(self.n_trains))
 
-        for index, (train_id, data) in it:
+        from extra_data import DataCollection, SourceData
+
+        if isinstance(subobj, SourceData):
+            # SourceData has no trains() iterator yet, so simulate it
+            # ourselves by reconstructing a DataCollection object and
+            # use its trains() iterator.
+            dc = DataCollection(
+                subobj.files, {subobj.source: subobj}, subobj.train_ids,
+                inc_suspect_trains=subobj.inc_suspect_trains,
+                is_single_run=True)
+            data_it = ((train_id, data[subobj.source])
+                       for train_id, data in dc.trains())
+        else:
+            # Use the regular trains() iterator for DataCollection and
+            # KeyData
+            data_it = subobj.trains()
+
+        for index, (train_id, data) in zip(index_it, data_it):
             yield index, train_id, data
