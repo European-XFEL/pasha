@@ -130,9 +130,11 @@ def test_map(ctx):
 
     def multiply(worker_id, index, value):
         outp[index] = 3 * value
+        return outp[index]
 
-    ctx.map(multiply, inp)
+    ret = ctx.map(multiply, inp)
     np.testing.assert_allclose(outp, inp*3)
+    np.testing.assert_allclose(outp, ret)
 
 
 def test_initial_default_context():
