@@ -6,6 +6,7 @@
 # Copyright (c) 2020, European X-Ray Free-Electron Laser Facility GmbH.
 # All rights reserved.
 
+import itertools
 from numbers import Integral
 
 import numpy as np
@@ -217,8 +218,7 @@ class MapContext:
             None
         """
 
-        for entry in functor.iterate(share):
-            function(worker_id, *entry)
+        return [function(worker_id, *entry) for entry in functor.iterate(share)]
 
 
 class SerialContext(MapContext):
@@ -233,7 +233,7 @@ class SerialContext(MapContext):
 
     def map(self, function, functor):
         functor = Functor.try_wrap(functor)
-        self.run_worker(function, functor, next(iter(functor.split(1))), 0)
+        return self.run_worker(function, functor, next(iter(functor.split(1))), 0)
 
 
 class PoolContext(MapContext):
@@ -275,7 +275,9 @@ class PoolContext(MapContext):
             self.id_queue.put(worker_id)
 
         with pool_cls(self.num_workers, self.init_worker, (functor,)) as p:
-            p.map(self.run_worker, functor.split(self.num_workers))
+            returned_chunks = p.map(self.run_worker, functor.split(self.num_workers))
+
+        return list(itertools.chain.from_iterable(returned_chunks))
 
 
 class ThreadContext(PoolContext):
@@ -293,15 +295,15 @@ class ThreadContext(PoolContext):
 
     def map(self, function, functor):
         from multiprocessing.pool import ThreadPool
-        super().map(function, functor, ThreadPool)
+        return super().map(function, functor, ThreadPool)
 
     def init_worker(self, functor):
         self.worker_storage.worker_id = self.id_queue.get()
         self.worker_storage.functor = functor
 
     def run_worker(self, share):
-        super().run_worker(self.function, self.worker_storage.functor, share,
-                           self.worker_storage.worker_id)
+        return super().run_worker(self.function, self.worker_storage.functor, share,
+                                  self.worker_storage.worker_id)
 
 
 class ProcessContext(PoolContext):
@@ -353,7 +355,7 @@ class ProcessContext(PoolContext):
         return array
 
     def map(self, function, functor):
-        super().map(function, functor, self.mp_ctx.Pool)
+        return super().map(function, functor, self.mp_ctx.Pool)
 
     def init_worker(self, functor):
         # Save reference in process-local copy
@@ -369,5 +371,5 @@ class ProcessContext(PoolContext):
         # actually part of the execution.
 
         self = cls._instance
-        super(cls, self).run_worker(self.function, self.functor, share,
-                                    self.worker_id)
+        return super(cls, self).run_worker(self.function, self.functor, share,
+                                           self.worker_id)
