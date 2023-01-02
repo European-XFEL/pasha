@@ -132,7 +132,7 @@ def test_map(ctx):
         outp[index] = 3 * value
         return outp[index]
 
-    ret = ctx.map(multiply, inp)
+    ret = ctx.map(multiply, inp, chunksize=10 if isinstance(ctx, psh.ProcessContext) else None)
     np.testing.assert_allclose(outp, inp*3)
     np.testing.assert_allclose(outp, ret)
 

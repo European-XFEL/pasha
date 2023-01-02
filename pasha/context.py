@@ -6,6 +6,7 @@
 # Copyright (c) 2020, European X-Ray Free-Electron Laser Facility GmbH.
 # All rights reserved.
 
+import functools
 import itertools
 from numbers import Integral
 
@@ -178,7 +179,7 @@ class MapContext:
 
         return array
 
-    def map(self, function, functor):
+    def map(self, function, functor, chunksize=None):
         """Apply a function to a functor.
 
         This method performs the map operation, applying the function to
@@ -190,6 +191,8 @@ class MapContext:
             function (Callable): Kernel function to map with.
             functor (Functor or Any): Functor to map over or any type
                 with automatic wrapping support.
+            chunksize (int, optional): The size of the chunks to send to
+                the worker pool (ignored by SerialContext).
 
         Returns:
             None
@@ -231,7 +234,7 @@ class SerialContext(MapContext):
     def __init__(self, *args, **kwargs):
         super().__init__(num_workers=1)
 
-    def map(self, function, functor):
+    def map(self, function, functor, chunksize=None):
         functor = Functor.try_wrap(functor)
         return self.run_worker(function, functor, next(iter(functor.split(1))), 0)
 
@@ -253,7 +256,7 @@ class PoolContext(MapContext):
 
         super().__init__(num_workers=num_workers)
 
-    def map(self, function, functor, pool_cls):
+    def map(self, function, functor, chunksize, pool_cls):
         """Apply a function to a functor.
 
         Incomplete map method to be called by a subtype.
@@ -275,7 +278,12 @@ class PoolContext(MapContext):
             self.id_queue.put(worker_id)
 
         with pool_cls(self.num_workers, self.init_worker, (functor,)) as p:
-            returned_chunks = p.map(self.run_worker, functor.split(self.num_workers))
+            if chunksize is None:
+                map_func = p.map
+            else:
+                map_func = functools.partial(p.map, chunksize=chunksize)
+
+            returned_chunks = map_func(self.run_worker, functor.split(self.num_workers))
 
         return list(itertools.chain.from_iterable(returned_chunks))
 
@@ -293,9 +301,9 @@ class ThreadContext(PoolContext):
         self.id_queue = Queue()
         self.worker_storage = local()
 
-    def map(self, function, functor):
+    def map(self, function, functor, chunksize=None):
         from multiprocessing.pool import ThreadPool
-        return super().map(function, functor, ThreadPool)
+        return super().map(function, functor, chunksize, ThreadPool)
 
     def init_worker(self, functor):
         self.worker_storage.worker_id = self.id_queue.get()
@@ -354,8 +362,8 @@ class ProcessContext(PoolContext):
 
         return array
 
-    def map(self, function, functor):
-        return super().map(function, functor, self.mp_ctx.Pool)
+    def map(self, function, functor, chunksize=None):
+        return super().map(function, functor, chunksize, self.mp_ctx.Pool)
 
     def init_worker(self, functor):
         # Save reference in process-local copy
