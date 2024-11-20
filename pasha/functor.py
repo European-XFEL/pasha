@@ -286,7 +286,16 @@ class ExtraDataFunctor(Functor):
             for f in subobj.files:
                 f.close()
 
-        it = zip(range(*share.indices(self.n_trains)), subobj.trains())
+        from extra_data import KeyData
+        if isinstance(subobj, KeyData):
+            # KeyData objects would not include an empty result by
+            # default, which may cause the index to not be aligned to
+            # the train ID list.
+            train_it = subobj.trains(include_empty=True)
+        else:
+            train_it = subobj.trains()
+
+        it = zip(range(*share.indices(self.n_trains)), train_it)
 
         for index, (train_id, data) in it:
             yield index, train_id, data
