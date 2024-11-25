@@ -6,7 +6,7 @@
 # Copyright (c) 2020, European X-Ray Free-Electron Laser Facility GmbH.
 # All rights reserved.
 
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 
 from functools import wraps
 
