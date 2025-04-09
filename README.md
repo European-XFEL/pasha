@@ -12,9 +12,8 @@ import pasha as psh
 # Get some random input data
 inp = np.random.rand(100)
 
-# Allocate output array via pasha. The returned array is
-# guaranteed to be accessible from any worker, and may
-# reside in shared memory.
+# Allocate output array via pasha. The returned array is guaranteed
+# to be accessible from any worker, and may reside in shared memory.
 outp = psh.alloc(like=inp)
 
 # Define a kernel function multiplying each value with 3.
@@ -27,6 +26,29 @@ psh.map(triple_it, inp)
 # Check the result
 np.testing.assert_allclose(outp, inp*3)
 ```
+
+This also works for reduction patterns by using an array for each worker, and combining the results afterwards. `psh.alloc` provides the `per_worker=True` argument to automatically allocate the result for each worker separately, and the `worker_id` passed to each kernel invocation can be used as an index. Then all that is left is reducing over the per-worker outputs for the final result:
+
+```python
+# Input data to sum over the first axis
+inp = np.random.rand(200, 50)
+
+# Allocate output array via pasha to hold the sum over the first axis,
+# one for each worker. This injects an additional axis in the front to
+# have one copy for each worker.
+outp = psh.alloc(shape=(50,), per_worker=True)
+
+# Define a kernel function summing up the values per worker.
+def average(worker_id, index, value):
+    outp[worker_id] += value
+
+# Map the kernel function.
+psh.map(average, inp)
+
+# Sum away the per-worker axis.
+outp = outp.sum(axis=0)
+```
+
 The runtime environment is controlled by a map context. The default context object is `ProcessContext`, which uses `multiprocessing.Pool` to distribute the work across several processes. This context only works on \*nix systems supporting the fork() system call, as it expects any input data to be shared. When the process context is selected, `psh.alloc()` creates arrays in shared memory, so workers can write output data there and the caller can retrieve it with no memory copies.
 
 You may either create an explicit context object and use it directly or change the default context, e.g.
